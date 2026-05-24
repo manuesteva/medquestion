@@ -206,7 +206,7 @@ export const listUploadsWithStats = createServerFn({ method: "GET" })
     const [{ data: ups }, { data: qs }, { data: ats }] = await Promise.all([
       supabase
         .from("uploads")
-        .select("id, file_name, display_name, status, error, questions_count, created_at")
+        .select("id, file_name, display_name, status, error, questions_count, created_at, folder_id")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
       supabase.from("questions").select("id, upload_id").eq("user_id", userId),
