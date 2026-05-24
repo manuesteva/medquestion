@@ -35,8 +35,8 @@ function Signup() {
         toast.error(error.message);
         return;
       }
-      toast.success("Conta criada! Vamos personalizar sua experiência.");
-      navigate({ to: "/onboarding" });
+      toast.success("Conta criada com sucesso! Bem-vindo ao MedQuest.");
+      navigate({ to: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro inesperado");
     } finally {
