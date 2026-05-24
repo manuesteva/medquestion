@@ -20,22 +20,22 @@ export function SessionsResumeCard() {
   });
 
   if (!data) return null;
+  const session = data;
 
-  const total = (data.question_ids as string[]).length;
-  const cur = Math.min(total, (data.current_index ?? 0) + 1);
+  const total = (session.question_ids as string[]).length;
+  const cur = Math.min(total, (session.current_index ?? 0) + 1);
   const progressPct = Math.round((cur / Math.max(1, total)) * 100);
-  const isSimulado = data.kind === "simulado";
+  const isSimulado = session.kind === "simulado";
   const remaining = isSimulado
-    ? Math.max(0, (data.time_limit_sec ?? 0) - (data.elapsed_sec ?? 0))
+    ? Math.max(0, (session.time_limit_sec ?? 0) - (session.elapsed_sec ?? 0))
     : 0;
   const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
   const ss = String(remaining % 60).padStart(2, "0");
 
   function resume() {
-    if (data.kind === "simulado") {
-      navigate({ to: "/simulado", search: { count: 1, minutes: 1, resume: data.id } as never });
+    if (session.kind === "simulado") {
+      navigate({ to: "/simulado", search: { count: 1, minutes: 1, resume: session.id } as never });
     } else {
-      // practice/review currently aren't session-backed at the UI level yet
       navigate({ to: "/practice" });
     }
   }
