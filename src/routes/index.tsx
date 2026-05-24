@@ -692,7 +692,6 @@ function Landing() {
         <StatsBar />
         <Features />
         <HowItWorks />
-        <Testimonials />
         <FaqSection />
         <FinalCTA />
       </main>
