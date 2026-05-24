@@ -303,6 +303,57 @@ export type Database = {
         }
         Relationships: []
       }
+      study_sessions: {
+        Row: {
+          correct_count: number
+          created_at: string
+          current_index: number
+          elapsed_sec: number
+          finished_at: string | null
+          id: string
+          kind: string
+          last_activity_at: string
+          meta: Json
+          picks: Json
+          question_ids: string[]
+          status: string
+          time_limit_sec: number | null
+          user_id: string
+        }
+        Insert: {
+          correct_count?: number
+          created_at?: string
+          current_index?: number
+          elapsed_sec?: number
+          finished_at?: string | null
+          id?: string
+          kind: string
+          last_activity_at?: string
+          meta?: Json
+          picks?: Json
+          question_ids?: string[]
+          status?: string
+          time_limit_sec?: number | null
+          user_id: string
+        }
+        Update: {
+          correct_count?: number
+          created_at?: string
+          current_index?: number
+          elapsed_sec?: number
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          last_activity_at?: string
+          meta?: Json
+          picks?: Json
+          question_ids?: string[]
+          status?: string
+          time_limit_sec?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       uploads: {
         Row: {
           created_at: string
