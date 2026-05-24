@@ -49,10 +49,15 @@ function Onboarding() {
     try {
       await submit({ data: { theme, gender, goal, specialty, daily_goal: dailyGoal } });
       toast.success("Tudo pronto!");
-      navigate({ to: "/dashboard" });
+      await navigate({ to: "/dashboard", replace: true });
+      // Defensive fallback in case the SPA navigation does not fire.
+      setTimeout(() => {
+        if (window.location.pathname !== "/dashboard") {
+          window.location.assign("/dashboard");
+        }
+      }, 300);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar");
-    } finally {
       setLoading(false);
     }
   }

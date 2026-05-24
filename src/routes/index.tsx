@@ -155,7 +155,7 @@ function Hero() {
             className="mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl"
           >
             Envie qualquer prova em PDF ou imagem. A IA identifica cada questão,
-            você resolve e recebe explicações detalhadas — como ter um preceptor 24h.
+            você resolve e recebe explicações detalhadas e direcionadas.
           </motion.p>
 
           <motion.div
@@ -488,74 +488,6 @@ function HowItWorks() {
   );
 }
 
-/* ---------- Testimonials ---------- */
-function Testimonials() {
-  const items = [
-    {
-      quote: "Mudou minha forma de estudar. Em 2 meses já vi diferença nos simulados.",
-      name: "Dra. Carolina M.",
-      role: "R1 Clínica Médica",
-    },
-    {
-      quote: "A IA explica como um preceptor. Finalmente entendo o porquê das respostas.",
-      name: "João P., M6",
-      role: "Preparação USP/UNIFESP",
-    },
-    {
-      quote: "Subo provas antigas e treino direcionado. Dashboard é viciante.",
-      name: "Marina S.",
-      role: "Residência de Pediatria",
-    },
-  ];
-  return (
-    <section className="py-24">
-      <div className="mx-auto max-w-6xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, amount: 0.4 }}
-          variants={stagger}
-          className="mx-auto max-w-2xl text-center"
-        >
-          <motion.div variants={fadeUp} className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ocean-teal)" }}>
-            Quem usa, recomenda
-          </motion.div>
-          <motion.h2 variants={fadeUp} className="font-display mt-3 text-4xl font-bold tracking-tight sm:text-5xl">
-            Para quem leva o estudo a sério
-          </motion.h2>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, amount: 0.2 }}
-          variants={stagger}
-          className="mt-14 grid gap-5 md:grid-cols-3"
-        >
-          {items.map((t) => (
-            <motion.figure
-              key={t.name}
-              variants={fadeUp}
-              className="rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:shadow-lg"
-            >
-              <div className="flex gap-1" style={{ color: "var(--ocean-teal)" }}>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Sparkles key={i} className="h-4 w-4 fill-current" />
-                ))}
-              </div>
-              <blockquote className="mt-4 text-base leading-relaxed">"{t.quote}"</blockquote>
-              <figcaption className="mt-4 border-t border-border pt-4">
-                <div className="font-semibold">{t.name}</div>
-                <div className="text-xs text-muted-foreground">{t.role}</div>
-              </figcaption>
-            </motion.figure>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
 /* ---------- Final CTA ---------- */
 function FinalCTA() {
   return (
@@ -692,7 +624,6 @@ function Landing() {
         <StatsBar />
         <Features />
         <HowItWorks />
-        <Testimonials />
         <FaqSection />
         <FinalCTA />
       </main>
