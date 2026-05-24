@@ -93,7 +93,12 @@ export const finishSession = createServerFn({ method: "POST" })
     z.object({ id: z.string().uuid(), correctCount: z.number().int().min(0).max(1000).optional() }).parse(i),
   )
   .handler(async ({ context, data }) => {
-    const patch: Record<string, unknown> = {
+    const patch: {
+      status: "finished";
+      finished_at: string;
+      last_activity_at: string;
+      correct_count?: number;
+    } = {
       status: "finished",
       finished_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
@@ -101,7 +106,7 @@ export const finishSession = createServerFn({ method: "POST" })
     if (data.correctCount !== undefined) patch.correct_count = data.correctCount;
     const { error } = await context.supabase
       .from("study_sessions")
-      .update(patch)
+      .update(patch as never)
       .eq("id", data.id)
       .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
