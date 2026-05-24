@@ -35,7 +35,7 @@ export const createSession = createServerFn({ method: "POST" })
         status: "active",
         question_ids: data.questionIds,
         time_limit_sec: data.timeLimitSec ?? null,
-        meta: data.meta ?? {},
+        meta: (data.meta ?? {}) as never,
       })
       .select("id")
       .single();
