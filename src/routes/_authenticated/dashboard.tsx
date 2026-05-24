@@ -213,6 +213,9 @@ function Dashboard() {
         </div>
       </section>
 
+      {/* Long-term progress */}
+      <LongTermChart />
+
       {/* Subjects */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[var(--shadow-card)]">
         <div className="flex items-center gap-2">
