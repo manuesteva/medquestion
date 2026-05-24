@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/stats.functions";
 import { getMyContext } from "@/lib/profile.functions";
 import { useAuth } from "@/hooks/use-auth";
+import { SessionsResumeCard } from "@/components/SessionsResumeCard";
+import { LongTermChart } from "@/components/LongTermChart";
 import {
   Upload, ArrowRight, Brain, RotateCcw, Bookmark, Target, TrendingUp, Timer, Flame,
-  Timer as TimerIcon, BookOpen, ChevronRight, Check, X,
+  Timer as TimerIcon, BookOpen, ChevronRight, Check, X, Clock, History,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
@@ -48,6 +50,8 @@ function Dashboard() {
 
   return (
     <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-7">
+      <SessionsResumeCard />
+
       {/* Banner */}
       <section className="relative overflow-hidden rounded-[20px] border border-border bg-gradient-to-br from-[#dbeafe] via-[#eff6ff] to-[#e0f2fe] p-6 dark:from-[#1e3a5f] dark:via-[#1e3058] dark:to-[#0c3459]">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
@@ -93,11 +97,25 @@ function Dashboard() {
             onClick={() => setReviewModal(true)}
           />
           <ActionCard
+            icon={<Clock className="h-5 w-5" />}
+            iconBg="bg-amber-500/15 text-amber-600 dark:text-amber-400"
+            title="Rever depois"
+            sub="Questões salvas para revisar"
+            onClick={() => navigate({ to: "/practice", search: { reviewLater: "1" } as never })}
+          />
+          <ActionCard
             icon={<Bookmark className="h-5 w-5" />}
             iconBg="bg-[#ccfbf1] text-[#0d9488] dark:bg-[#064e3b] dark:text-emerald-300"
             title="Favoritas"
             sub="Suas marcadas"
             onClick={() => navigate({ to: "/practice", search: { favorites: true } as never })}
+          />
+          <ActionCard
+            icon={<History className="h-5 w-5" />}
+            iconBg="bg-violet-500/15 text-violet-600 dark:text-violet-400"
+            title="Minhas sessões"
+            sub="Histórico e sessões pausadas"
+            onClick={() => navigate({ to: "/sessions" })}
           />
         </div>
       </section>
@@ -194,6 +212,9 @@ function Dashboard() {
           </ResponsiveContainer>
         </div>
       </section>
+
+      {/* Long-term progress */}
+      <LongTermChart />
 
       {/* Subjects */}
       <section className="rounded-[20px] border border-border bg-card p-5 shadow-[var(--shadow-card)]">

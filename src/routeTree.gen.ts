@@ -20,6 +20,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedUploadRouteImport } from './routes/_authenticated/upload'
 import { Route as AuthenticatedSimuladoRouteImport } from './routes/_authenticated/simulado'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedSessionsRouteImport } from './routes/_authenticated/sessions'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedPracticeRouteImport } from './routes/_authenticated/practice'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
@@ -80,6 +81,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSessionsRoute = AuthenticatedSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
   id: '/review',
   path: '/review',
@@ -119,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/practice': typeof AuthenticatedPracticeRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/sessions': typeof AuthenticatedSessionsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/simulado': typeof AuthenticatedSimuladoRoute
   '/upload': typeof AuthenticatedUploadRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/practice': typeof AuthenticatedPracticeRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/sessions': typeof AuthenticatedSessionsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/simulado': typeof AuthenticatedSimuladoRoute
   '/upload': typeof AuthenticatedUploadRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/practice': typeof AuthenticatedPracticeRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
+  '/_authenticated/sessions': typeof AuthenticatedSessionsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/simulado': typeof AuthenticatedSimuladoRoute
   '/_authenticated/upload': typeof AuthenticatedUploadRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/practice'
     | '/review'
+    | '/sessions'
     | '/settings'
     | '/simulado'
     | '/upload'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/practice'
     | '/review'
+    | '/sessions'
     | '/settings'
     | '/simulado'
     | '/upload'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/_authenticated/onboarding'
     | '/_authenticated/practice'
     | '/_authenticated/review'
+    | '/_authenticated/sessions'
     | '/_authenticated/settings'
     | '/_authenticated/simulado'
     | '/_authenticated/upload'
@@ -304,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/sessions': {
+      id: '/_authenticated/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof AuthenticatedSessionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/review': {
       id: '/_authenticated/review'
       path: '/review'
@@ -348,6 +367,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedPracticeRoute: typeof AuthenticatedPracticeRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
+  AuthenticatedSessionsRoute: typeof AuthenticatedSessionsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSimuladoRoute: typeof AuthenticatedSimuladoRoute
   AuthenticatedUploadRoute: typeof AuthenticatedUploadRoute
@@ -359,6 +379,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedPracticeRoute: AuthenticatedPracticeRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
+  AuthenticatedSessionsRoute: AuthenticatedSessionsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSimuladoRoute: AuthenticatedSimuladoRoute,
   AuthenticatedUploadRoute: AuthenticatedUploadRoute,
@@ -381,13 +402,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
