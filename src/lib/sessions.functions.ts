@@ -56,13 +56,18 @@ export const updateSession = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ context, data }) => {
-    const patch: Record<string, unknown> = { last_activity_at: new Date().toISOString() };
+    const patch: {
+      last_activity_at: string;
+      picks?: Record<string, string>;
+      current_index?: number;
+      elapsed_sec?: number;
+    } = { last_activity_at: new Date().toISOString() };
     if (data.picks) patch.picks = data.picks;
     if (data.currentIndex !== undefined) patch.current_index = data.currentIndex;
     if (data.elapsedSec !== undefined) patch.elapsed_sec = data.elapsedSec;
     const { error } = await context.supabase
       .from("study_sessions")
-      .update(patch)
+      .update(patch as never)
       .eq("id", data.id)
       .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
