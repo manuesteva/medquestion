@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/stats.functions";
 import { getMyContext } from "@/lib/profile.functions";
 import { useAuth } from "@/hooks/use-auth";
+import { SessionsResumeCard } from "@/components/SessionsResumeCard";
+import { LongTermChart } from "@/components/LongTermChart";
 import {
   Upload, ArrowRight, Brain, RotateCcw, Bookmark, Target, TrendingUp, Timer, Flame,
-  Timer as TimerIcon, BookOpen, ChevronRight, Check, X,
+  Timer as TimerIcon, BookOpen, ChevronRight, Check, X, Clock, History,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
