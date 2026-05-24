@@ -39,13 +39,16 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       });
     if (pErr) throw new Error(pErr.message);
 
-    const updates: { onboarded: boolean; theme: string; gender: string; full_name?: string } = {
+    const profileRow: { id: string; onboarded: boolean; theme: string; gender: string; full_name?: string } = {
+      id: userId,
       onboarded: true,
       theme: data.theme,
       gender: data.gender,
     };
-    if (data.full_name) updates.full_name = data.full_name;
-    const { error: profErr } = await supabase.from("profiles").update(updates).eq("id", userId);
+    if (data.full_name) profileRow.full_name = data.full_name;
+    const { error: profErr } = await supabase
+      .from("profiles")
+      .upsert(profileRow, { onConflict: "id" });
     if (profErr) throw new Error(profErr.message);
     return { ok: true as const };
   });
