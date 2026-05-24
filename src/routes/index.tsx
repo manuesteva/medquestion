@@ -155,7 +155,7 @@ function Hero() {
             className="mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl"
           >
             Envie qualquer prova em PDF ou imagem. A IA identifica cada questão,
-            você resolve e recebe explicações detalhadas — como ter um preceptor 24h.
+            você resolve e recebe explicações detalhadas e direcionadas.
           </motion.p>
 
           <motion.div
