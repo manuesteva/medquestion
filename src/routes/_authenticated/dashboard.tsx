@@ -50,6 +50,8 @@ function Dashboard() {
 
   return (
     <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-7">
+      <SessionsResumeCard />
+
       {/* Banner */}
       <section className="relative overflow-hidden rounded-[20px] border border-border bg-gradient-to-br from-[#dbeafe] via-[#eff6ff] to-[#e0f2fe] p-6 dark:from-[#1e3a5f] dark:via-[#1e3058] dark:to-[#0c3459]">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
