@@ -97,11 +97,25 @@ function Dashboard() {
             onClick={() => setReviewModal(true)}
           />
           <ActionCard
+            icon={<Clock className="h-5 w-5" />}
+            iconBg="bg-amber-500/15 text-amber-600 dark:text-amber-400"
+            title="Rever depois"
+            sub="Questões salvas para revisar"
+            onClick={() => navigate({ to: "/practice", search: { reviewLater: "1" } as never })}
+          />
+          <ActionCard
             icon={<Bookmark className="h-5 w-5" />}
             iconBg="bg-[#ccfbf1] text-[#0d9488] dark:bg-[#064e3b] dark:text-emerald-300"
             title="Favoritas"
             sub="Suas marcadas"
             onClick={() => navigate({ to: "/practice", search: { favorites: true } as never })}
+          />
+          <ActionCard
+            icon={<History className="h-5 w-5" />}
+            iconBg="bg-violet-500/15 text-violet-600 dark:text-violet-400"
+            title="Minhas sessões"
+            sub="Histórico e sessões pausadas"
+            onClick={() => navigate({ to: "/sessions" })}
           />
         </div>
       </section>
