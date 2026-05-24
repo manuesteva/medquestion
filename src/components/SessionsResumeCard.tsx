@@ -48,9 +48,9 @@ export function SessionsResumeCard() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-primary">
-            {data.status === "paused" ? "Sessão pausada" : "Continue de onde parou"}
+            {session.status === "paused" ? "Sessão pausada" : "Continue de onde parou"}
           </div>
-          <div className="mt-0.5 text-base font-bold">{KIND_LABEL[data.kind] ?? data.kind}</div>
+          <div className="mt-0.5 text-base font-bold">{KIND_LABEL[session.kind] ?? session.kind}</div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span>
               Progresso {cur}/{total}
