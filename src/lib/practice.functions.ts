@@ -191,7 +191,7 @@ export const listUploads = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data } = await context.supabase
       .from("uploads")
-      .select("id, file_name, display_name, status, error, questions_count, created_at")
+      .select("id, file_name, display_name, status, error, questions_count, warnings, created_at")
       .eq("user_id", context.userId)
       .order("created_at", { ascending: false })
       .limit(20);
