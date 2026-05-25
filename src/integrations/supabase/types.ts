@@ -248,7 +248,9 @@ export type Database = {
         Row: {
           created_at: string
           difficulty: string | null
+          flagged_inconsistent: boolean
           id: string
+          question_number: number | null
           source: string | null
           statement: string
           subject: string | null
@@ -258,7 +260,9 @@ export type Database = {
         Insert: {
           created_at?: string
           difficulty?: string | null
+          flagged_inconsistent?: boolean
           id?: string
+          question_number?: number | null
           source?: string | null
           statement: string
           subject?: string | null
@@ -268,7 +272,9 @@ export type Database = {
         Update: {
           created_at?: string
           difficulty?: string | null
+          flagged_inconsistent?: boolean
           id?: string
+          question_number?: number | null
           source?: string | null
           statement?: string
           subject?: string | null
@@ -367,6 +373,7 @@ export type Database = {
           questions_count: number
           status: string
           user_id: string
+          warnings: Json
         }
         Insert: {
           created_at?: string
@@ -380,6 +387,7 @@ export type Database = {
           questions_count?: number
           status?: string
           user_id: string
+          warnings?: Json
         }
         Update: {
           created_at?: string
@@ -393,6 +401,7 @@ export type Database = {
           questions_count?: number
           status?: string
           user_id?: string
+          warnings?: Json
         }
         Relationships: [
           {
