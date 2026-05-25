@@ -608,8 +608,9 @@ function UploadPage() {
           <p className="text-sm text-muted-foreground">Nenhum upload ainda.</p>
         )}
         {(uploads.data ?? []).map((u) => {
-          const warns = Array.isArray((u as { warnings?: unknown }).warnings)
-            ? ((u as { warnings: string[] }).warnings ?? [])
+          const warnsRaw = (u as unknown as { warnings?: unknown }).warnings;
+          const warns: string[] = Array.isArray(warnsRaw)
+            ? (warnsRaw as string[])
             : [];
           return (
             <div
