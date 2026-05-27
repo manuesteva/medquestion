@@ -8,6 +8,7 @@ import {
   extractQuestionsFromText,
   createUploadShell,
   createSignedUploadUrl,
+  confirmExtraction,
 } from "@/lib/extract.functions";
 import { listUploads } from "@/lib/practice.functions";
 import {
@@ -118,6 +119,7 @@ function UploadPage() {
   const extractText = useServerFn(extractQuestionsFromText);
   const createShell = useServerFn(createUploadShell);
   const createSignedUrl = useServerFn(createSignedUploadUrl);
+  const confirmExtract = useServerFn(confirmExtraction);
   const list = useServerFn(listUploads);
 
   const uploads = useQuery({
@@ -325,9 +327,34 @@ function UploadPage() {
         },
       });
 
-      toast.success(`${result.count} questão(ões) extraída(s)!`);
-      if (result.warnings && result.warnings.length > 0) {
-        result.warnings.forEach((w) => toast.warning(w, { duration: 7000 }));
+      if (result.pending) {
+        const list = result.missing.slice(0, 10).join(", ");
+        const proceed = window.confirm(
+          `Não foi possível identificar ${result.missing.length} questão(ões): ${list}${result.missing.length > 10 ? "…" : ""}\n\nDeseja salvar mesmo assim?\n\nOK = Salvar  ·  Cancelar = Refazer upload`,
+        );
+        const confirmRes = await confirmExtract({
+          data: { uploadId: shell.uploadId, decision: proceed ? "continue" : "redo" },
+        });
+        if (proceed && "count" in confirmRes && confirmRes.count) {
+          toast.success(`${confirmRes.count} questão(ões) extraída(s)!`);
+          if (
+            "warnings" in confirmRes &&
+            Array.isArray(confirmRes.warnings)
+          ) {
+            confirmRes.warnings.forEach((w: string) =>
+              toast.warning(w, { duration: 7000 }),
+            );
+          }
+        } else {
+          toast("Upload cancelado — envie novamente.");
+        }
+      } else {
+        toast.success(`${result.count} questão(ões) extraída(s)!`);
+        if (result.warnings && result.warnings.length > 0) {
+          result.warnings.forEach((w: string) =>
+            toast.warning(w, { duration: 7000 }),
+          );
+        }
       }
       clearAll();
       setExamName("");
