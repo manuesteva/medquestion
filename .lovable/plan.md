@@ -1,81 +1,87 @@
-## Fase 1 — Críticos (OCR + Gabarito + Mobile)
 
-Esta primeira mensagem foca apenas nos itens **2, 4 e 7** do seu brief — os bloqueadores que destroem a confiança do produto hoje. As fases 2 (Auth/Perfil/Onboarding), 3 (Simulado/Compartilhamento/Biblioteca) e 4 (Landing/LGPD/Polimento) virão em mensagens próprias, onde poderei testar cada bloco isoladamente.
+# Parte 1 — Pipeline OCR + Validação de Gabaritos
+
+## 0. Pré-requisitos (secrets)
+
+Adicionar duas chaves via `add_secret`:
+- `GOOGLE_AI_API_KEY` — Google AI Studio (Gemini 1.5 Pro)
+- `ANTHROPIC_API_KEY` — Anthropic Console (Claude Sonnet 4)
+
+A implementação só prossegue depois que ambas estiverem salvas.
+
+## 1. Migração de banco
+
+Novos campos para suportar confiança, afirmativas, tipo de questão e flags de validação:
+
+- `questions`:
+  - `confidence text` (`high|medium|low`)
+  - `validation_status text` (`ok|warning|critical`)
+  - `validation_reason text`
+  - `question_type text` (`multipla_escolha|verdadeiro_falso|dissertativa`)
+  - `affirmatives jsonb` (lista de itens I/II/III ou V/F)
+  - `explanation_raw text` (explicação capturada do próprio documento, se houver)
+- `uploads`:
+  - `pipeline_stage text` (`uploaded|ocr|validation|sequence|saving|done|failed`)
+  - `pipeline_progress int` (0-100)
+  - `missing_numbers jsonb` (ex: `[4, 17]`)
+  - `pending_confirmation boolean` (pausa antes de salvar quando faltar questão)
+
+Grants e RLS já existentes nas duas tabelas cobrem os novos campos.
+
+## 2. Pipeline server-side (`src/lib/extract.functions.ts` — reescrita)
+
+Substituir a chamada única ao Lovable Gateway por **duas etapas em série**, com atualização do `pipeline_stage` + `pipeline_progress` no `uploads` a cada transição (cliente faz polling para a barra real).
+
+### Etapa A — Extração (Gemini 1.5 Pro direto)
+
+- Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=GOOGLE_AI_API_KEY`
+- Envio multimodal: cada arquivo vira `inlineData` (PDF) ou `fileData` por URL assinada (imagem). Para PDFs grandes, usar `inlineData` base64 (limite 20MB do Gemini).
+- `system_instruction`: prompt exato fornecido pelo usuário (extração rígida, sem omissões, preservar EXCETO/NÃO/INCORRETA, confiança por questão).
+- `responseMimeType: application/json` + `responseSchema` com `numero`, `enunciado`, `afirmativas[]`, `alternativas[]`, `gabarito`, `explicacao`, `tipo`, `confianca`.
+- Marca `pipeline_stage='ocr'`, progresso 10 → 50.
+
+### Etapa B — Validação (Claude Sonnet 4 direto)
+
+- Endpoint: `https://api.anthropic.com/v1/messages`, modelo `claude-sonnet-4-20250514`, header `x-api-key`, `anthropic-version: 2023-06-01`.
+- System prompt exato fornecido pelo usuário (detector de inconsistências).
+- Input: JSON da etapa A. Output: mesmo JSON + `validacao{status, motivo}` por questão.
+- Regra inviolável aplicada server-side: se `gabarito` ≠ alternativa indicada pela `explicacao`, **prevalece a explicação**, `validacao.status='alerta'`, `validation_reason` registra o conflito.
+- `pipeline_stage='validation'`, progresso 50 → 80.
+
+### Etapa C — Sequência + persistência
+
+1. `pipeline_stage='sequence'`, progresso 80 → 90. Detecta números faltantes; se houver, seta `missing_numbers` + `pending_confirmation=true` e **retorna** sem salvar questões. UI mostra modal.
+2. Quando o cliente confirmar (nova server fn `confirmExtraction(uploadId, decision: 'continue'|'redo')`), executa a persistência: `pipeline_stage='saving'`, progresso 90 → 100. Mapeia `confianca→confidence`, `validacao→validation_status/reason`, grava `affirmatives`, `question_type`, `explanation_raw`. Nada é descartado silenciosamente.
+
+### Tratamento de erros
+
+- 429/insufficient_quota nas APIs → mensagem clara, `uploads.status='failed'` com `error` legível.
+- Falha de parsing JSON → registra `validation_status='critical'` no upload inteiro e mantém o melhor esforço.
+
+## 3. UI de upload (`src/routes/_authenticated/upload.tsx`)
+
+- Barra de progresso passa a refletir as 5 etapas reais (Upload → OCR Gemini → Validação Claude → Sequência → Salvando), com label visível e percentual, lidos via polling de `uploads.pipeline_stage/progress` (intervalo 1s, para no `done|failed`).
+- Quando `pending_confirmation=true` aparece modal: "⚠️ Questão X não foi identificada. Deseja continuar mesmo assim?" com botões **Continuar** / **Refazer leitura**. Os dois chamam `confirmExtraction`.
+- Mantém DnD/multi-upload já implementado.
+
+## 4. UI de questões (biblioteca + prática)
+
+- Badge de confiança em cada questão:
+  - 🟢 alta · 🟡 média (revisar) · 🔴 baixa/crítica (revisão necessária)
+- Banner amarelo no topo da prova quando o upload tem warnings ou `missing_numbers`.
+- Linha extra na questão quando `validation_status='warning'` mostrando `validation_reason` (ex.: "Gabarito ajustado pela explicação: B → D").
+- Renderização de `affirmatives[]` como lista numerada acima das alternativas (suporte real a V/F e I/II/III).
+
+## 5. Fora do escopo desta parte
+
+Itens 2 (perfil/onboarding), 3 (simulado), 4 (compartilhamento), 5 (landing/LGPD) seguem para mensagens separadas conforme combinado.
 
 ---
 
-### 1. Upload múltiplo + extração robusta (itens 2.1 – 2.9)
+## Detalhes técnicos
 
-**`src/routes/_authenticated/upload.tsx`**
-- Aceitar **vários arquivos** (drag-and-drop + file picker `multiple`) numa fila visual.
-- Grid de preview com miniaturas, numeração, **arrastar para reordenar** (dnd-kit), botão excluir página, renomear a prova.
-- Botão único "Processar X páginas" → envia tudo agrupado como **uma prova só**.
-- Barra de progresso real (XHR + signed URL) por arquivo + fase de IA com timer e mensagens.
-- Compressão client-side de imagens > 2MB (canvas → 2000px lado maior) para acelerar sem perder OCR.
-
-**`src/lib/extract.functions.ts` — reescrita completa**
-- Nova função `extractQuestionsBatch({ uploadId, files: [{path, mimeType}] })` que processa N páginas como uma prova única.
-- **Modelo `google/gemini-2.5-pro`** com `max_tokens` alto (priorizar qualidade).
-- Envio multi-imagem na mesma chamada via `image_url` (signed URLs, sem base64).
-- **Prompt reescrito** com regras explícitas:
-  - Preservar negrito/itálico/maiúsculas em palavras-chave (`EXCETO`, `NÃO`, `INCORRETA`, `CORRETA`).
-  - Cada afirmativa numerada (I, II, III, 1, 2, 3) em linha própria com quebra.
-  - Não fundir alternativas; não inventar conteúdo; marcar `incomplete: true` quando faltarem itens.
-  - Devolver `question_number` (número original) para validação de sequência.
-  - Corrigir ortografia/acentos do PT-BR sem alterar sentido clínico.
-- **Validação pós-IA** server-side:
-  - Detecta lacunas na sequência numérica → grava em `uploads.warnings`.
-  - Bloqueia questões com < 2 alternativas, sem gabarito, ou marcadas `incomplete`.
-  - Cruza `correct_rationale` com `is_correct` → se a letra citada na explicação não bater com a alternativa marcada como correta, marca `flagged_inconsistent`.
-
-**Schema (uma migração nova)**
-- `uploads.warnings jsonb default '[]'` — lista de avisos ("Questão 4 não identificada", etc.).
-- `questions.question_number int` + `questions.flagged_inconsistent bool default false`.
-- `questions.formatting jsonb default '{}'` — guarda spans de negrito/itálico para renderização.
-
-**UI da biblioteca/prática**
-- Banner amarelo na prova quando há `warnings` ou `flagged_inconsistent`, com lista clicável das questões problemáticas.
-- Renderizar `statement` preservando quebras de linha e (via marcação Markdown leve) **negrito/maiúsculas**.
-
----
-
-### 2. Confiabilidade do gabarito (item 4)
-
-**Validação cruzada na extração (mesma chamada da IA)**
-- O prompt agora exige `correct_letter` (A-E) + `correct_rationale` separados. Servidor compara: se `correct_letter ≠ option.label where is_correct`, dispara segunda chamada de "revisão" pedindo à IA que reanalise apenas aquela questão.
-- Se ainda houver conflito → marca `flagged_inconsistent` e a UI exibe "Gabarito em revisão — clique para corrigir manualmente".
-
-**Edição manual rápida**
-- Em `practice.tsx` / `library`, novo botão "Corrigir gabarito" abre dialog: lista alternativas, usuário clica na correta, salva via nova server fn `fixAnswerKey`.
-
-**`src/lib/explain.functions.ts`**
-- Ajustar para nunca contradizer o `is_correct` salvo: a explicação recebe a letra correta como input e é instruída a justificar exatamente ela.
-
----
-
-### 3. Responsividade mobile (item 7)
-
-**Auditoria + correção em todas as rotas**, especialmente:
-- `src/routes/_authenticated.tsx` (sidebar/topbar) — sidebar vira Sheet em < 768px, header mais compacto.
-- `src/routes/_authenticated/practice.tsx` — alternativas com `min-h-12`, padding mobile, sem overflow horizontal.
-- `src/routes/_authenticated/dashboard.tsx` / `library.tsx` — grids `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`, cards full-width no mobile.
-- `src/routes/index.tsx` — hero com `text-balance`, CTAs empilhados, sem barras gigantes.
-- Adicionar `overflow-x-hidden` no body + checar todos os `min-w-*` que estouram em 360px.
-- Tap targets ≥ 44px (botões `h-11` no mobile via responsive classes).
-- Safe-area no iOS: `pb-[env(safe-area-inset-bottom)]` em barras fixas.
-
----
-
-### Fora desta fase (próximas mensagens)
-- Fase 2: nome completo obrigatório, identificação no onboarding, sessão persistente, edição de pastas.
-- Fase 3: simulado com seleção de provas + modos de correção + tela final, compartilhamento com cópia.
-- Fase 4: landing (remover métricas falsas), Termos/LGPD reais, checkbox de aceite, polimento geral de UX.
-
----
-
-### Detalhes técnicos
-- Modelo IA: `google/gemini-2.5-pro` via Lovable AI Gateway (já configurado, sem nova chave).
-- Storage: bucket `prova-uploads` já existe; reutilizado.
-- DnD: `@dnd-kit/core` + `@dnd-kit/sortable` (a instalar).
-- Markdown leve no statement: `react-markdown` (a instalar) com whitelist mínima (`**`, `*`, quebras).
-- Backwards compat: uploads antigos continuam funcionando; novos campos têm default.
+- Novas server fns: `runExtractionPipeline(uploadId)`, `getUploadProgress(uploadId)`, `confirmExtraction(uploadId, decision)`. Todas com `requireSupabaseAuth`.
+- Reuso de `createUploadShell` + `createSignedUploadUrl` já existentes (upload direto ao Storage não muda).
+- Polling client-side via `useQuery` com `refetchInterval` dinâmico (para quando `done|failed|pending_confirmation`).
+- Chamadas a Gemini/Claude ficam em `src/lib/extract.server.ts` (helpers server-only) e são consumidas pelo `extract.functions.ts`.
+- Limites: PDF até 20MB por arquivo (limite Gemini inlineData); acima disso, fatiar em páginas (já temos pipeline multi-página).
