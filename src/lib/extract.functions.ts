@@ -3,6 +3,71 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 // ============================================================
+// Direct Gemini API client (used for OCR + Validation stages)
+// ============================================================
+const GEMINI_MODEL = "gemini-1.5-pro-latest";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } };
+
+async function fetchFileAsBase64(url: string): Promise<string> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Falha ao baixar arquivo (${r.status})`);
+  const buf = await r.arrayBuffer();
+  // Convert in chunks to avoid call-stack overflow on large files.
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+async function callGemini<T>(opts: {
+  apiKey: string;
+  systemPrompt: string;
+  parts: GeminiPart[];
+  responseSchema: Record<string, unknown>;
+}): Promise<T> {
+  const resp = await fetch(`${GEMINI_URL}?key=${opts.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: opts.systemPrompt }] },
+      contents: [{ role: "user", parts: opts.parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: opts.responseSchema,
+        temperature: 0.1,
+      },
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      ],
+    }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Gemini ${resp.status}: ${txt.slice(0, 240)}`);
+  }
+  const json = await resp.json();
+  const text: string | undefined =
+    json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ||
+    json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Resposta vazia do Gemini.");
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("Gemini retornou JSON inválido.");
+  }
+}
+
+// ============================================================
 // Text cleanup
 // ============================================================
 function cleanText(input: string): string {
