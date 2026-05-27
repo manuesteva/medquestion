@@ -115,6 +115,9 @@ const ExtractedQuestionSchema = z.object({
   difficulty: z.enum(["easy", "medium", "hard"]).nullable().optional(),
   incomplete: z.boolean().optional().default(false),
   correct_letter: z.enum(["A", "B", "C", "D", "E"]).nullable().optional(),
+  explanation: z.string().nullable().optional(),
+  question_type: z.string().nullable().optional(),
+  affirmatives: z.array(z.string()).nullable().optional(),
   options: z
     .array(
       z.object({
