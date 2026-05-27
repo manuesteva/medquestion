@@ -333,7 +333,6 @@ export const extractQuestions = createServerFn({ method: "POST" })
 
     const listParse = z
       .object({ questions: z.array(ExtractedQuestionSchema) })
-      .safeParse(parsedJson);
       .safeParse(extracted);
     if (!listParse.success || listParse.data.questions.length === 0) {
       return fail("Nenhuma questão foi reconhecida pelo OCR. Tente fotos mais nítidas.");
