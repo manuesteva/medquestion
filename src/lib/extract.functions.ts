@@ -195,6 +195,78 @@ const TOOL_DEF = {
 } as const;
 
 // ============================================================
+// Gemini response schemas + validation prompt
+// ============================================================
+const GEMINI_EXTRACT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          question_number: { type: "integer", nullable: true },
+          statement: { type: "string" },
+          subject: { type: "string", nullable: true },
+          difficulty: { type: "string", enum: ["easy", "medium", "hard"], nullable: true },
+          incomplete: { type: "boolean", nullable: true },
+          correct_letter: { type: "string", enum: ["A", "B", "C", "D", "E"], nullable: true },
+          explanation: { type: "string", nullable: true },
+          question_type: { type: "string", nullable: true },
+          affirmatives: { type: "array", items: { type: "string" }, nullable: true },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string", enum: ["A", "B", "C", "D", "E"] },
+                text: { type: "string" },
+                is_correct: { type: "boolean" },
+              },
+              required: ["label", "text", "is_correct"],
+            },
+          },
+        },
+        required: ["statement", "options"],
+      },
+    },
+  },
+  required: ["questions"],
+};
+
+const GEMINI_VALIDATION_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          idx: { type: "integer" },
+          validation_status: { type: "string", enum: ["ok", "alerta", "erro"] },
+          validation_reason: { type: "string", nullable: true },
+          resolved_letter: { type: "string", enum: ["A", "B", "C", "D", "E"], nullable: true },
+          confidence: { type: "number", nullable: true },
+        },
+        required: ["idx", "validation_status"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+const VALIDATION_PROMPT = `Você é um revisor pedagógico. Você recebe uma lista de questões já extraídas (JSON) com enunciado, alternativas, gabarito ("correct_letter") e, quando disponível, "explanation".
+
+Para cada questão, devolva um item com:
+- idx (mesmo idx recebido)
+- validation_status: "ok" se o gabarito e a explicação são coerentes; "alerta" se a explicação aponta uma letra diferente do gabarito ou há ambiguidade; "erro" se a questão está claramente quebrada (faltam alternativas/enunciado).
+- validation_reason: explique o problema em uma frase curta em português.
+- resolved_letter: a LETRA correta segundo a EXPLICAÇÃO (regra: a explicação sempre prevalece sobre o gabarito impresso quando divergem). Use null se não houver explicação clara.
+- confidence: número 0–1 estimando sua certeza na resposta correta.
+
+Devolva APENAS JSON conforme o schema fornecido.`;
+
+// ============================================================
 // Validation utilities
 // ============================================================
 function buildWarnings(questions: Array<z.infer<typeof ExtractedQuestionSchema>>) {
