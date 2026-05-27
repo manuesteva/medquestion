@@ -279,13 +279,29 @@ export const extractQuestions = createServerFn({ method: "POST" })
     async function fail(msg: string): Promise<never> {
       await supabase
         .from("uploads")
-        .update({ status: "failed", error: msg })
+        .update({ status: "failed", error: msg, pipeline_stage: "failed" })
         .eq("id", data.uploadId);
       throw new Error(msg);
     }
 
-    // 1) Build signed URLs (one per file) — sent directly to the AI gateway.
-    const signedUrls: Array<{ url: string; mimeType: string }> = [];
+    async function setStage(stage: string, progress: number) {
+      await supabase
+        .from("uploads")
+        .update({ pipeline_stage: stage, pipeline_progress: progress })
+        .eq("id", data.uploadId);
+    }
+
+    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    if (!apiKey) return fail("GOOGLE_AI_API_KEY não configurada");
+
+    await setStage("upload", 10);
+
+    // 1) Build signed URLs and download into base64 inline parts for Gemini.
+    const parts: GeminiPart[] = [
+      {
+        text: `Esta prova tem ${files.length} página(s)/arquivo(s). Extraia TODAS as questões objetivas em ordem.`,
+      },
+    ];
     for (const f of files) {
       const { data: sig, error: sigErr } = await supabase.storage
         .from("prova-uploads")
@@ -293,84 +309,109 @@ export const extractQuestions = createServerFn({ method: "POST" })
       if (sigErr || !sig?.signedUrl) {
         return fail(sigErr?.message ?? "Falha ao preparar arquivo para a IA.");
       }
-      signedUrls.push({ url: sig.signedUrl, mimeType: f.mimeType });
+      try {
+        const b64 = await fetchFileAsBase64(sig.signedUrl);
+        parts.push({ inline_data: { mime_type: f.mimeType, data: b64 } });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : "Falha ao carregar arquivo.");
+      }
     }
 
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) return fail("LOVABLE_API_KEY não configurada");
-
-    // 2) Single multimodal call with all pages.
-    const userParts: Array<Record<string, unknown>> = [
-      {
-        type: "text",
-        text: `Esta prova tem ${files.length} página(s). Extraia TODAS as questões objetivas em ordem. Devolva apenas via tool.`,
-      },
-      ...signedUrls.map((s) => ({
-        type: "image_url",
-        image_url: { url: s.url },
-      })),
-    ];
-
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userParts },
-        ],
-        tools: [TOOL_DEF],
-        tool_choice: { type: "function", function: { name: "save_questions" } },
-      }),
-    });
-
-    if (!resp.ok) {
-      const txt = await resp.text().catch(() => "");
-      const status = resp.status;
-      const msg =
-        status === 429
-          ? "Muitas requisições — aguarde alguns segundos."
-          : status === 402
-            ? "Créditos de IA esgotados. Adicione fundos no workspace."
-            : `Falha na IA (${status}): ${txt.slice(0, 200)}`;
-      return fail(msg);
-    }
-
-    const result = await resp.json();
-    const argsRaw =
-      result?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!argsRaw) return fail("A IA não conseguiu extrair questões deste arquivo.");
-
-    let parsedJson: unknown;
+    // ============ STAGE A — OCR / EXTRACTION ============
+    await setStage("ocr", 25);
+    let extracted: { questions: Array<z.infer<typeof ExtractedQuestionSchema>> };
     try {
-      parsedJson = JSON.parse(argsRaw);
-    } catch {
-      return fail("Resposta inválida da IA.");
+      extracted = await callGemini<typeof extracted>({
+        apiKey,
+        systemPrompt: SYSTEM_PROMPT,
+        parts,
+        responseSchema: GEMINI_EXTRACT_SCHEMA,
+      });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : "Falha na extração (Gemini).");
     }
 
     const listParse = z
       .object({ questions: z.array(ExtractedQuestionSchema) })
       .safeParse(parsedJson);
-    if (!listParse.success) {
-      return fail("Estrutura inesperada na resposta da IA.");
+      .safeParse(extracted);
+    if (!listParse.success || listParse.data.questions.length === 0) {
+      return fail("Nenhuma questão foi reconhecida pelo OCR. Tente fotos mais nítidas.");
     }
 
-    // 3) Clean + reconcile correctness per-question.
+    await setStage("ocr", 50);
+
+    // ============ STAGE B — VALIDATION (Gemini again) ============
+    await setStage("validation", 55);
+    const reviewInput = listParse.data.questions.map((q, idx) => ({
+      idx,
+      question_number: q.question_number ?? null,
+      statement: q.statement,
+      correct_letter: q.correct_letter ?? null,
+      explanation: (q as unknown as { explanation?: string }).explanation ?? null,
+      options: q.options.map((o) => ({ label: o.label, text: o.text })),
+    }));
+    type ReviewRow = {
+      idx: number;
+      validation_status: "ok" | "alerta" | "erro";
+      validation_reason?: string | null;
+      resolved_letter?: "A" | "B" | "C" | "D" | "E" | null;
+      confidence?: number | null;
+    };
+    let review: { items: ReviewRow[] } = { items: [] };
+    try {
+      review = await callGemini<typeof review>({
+        apiKey,
+        systemPrompt: VALIDATION_PROMPT,
+        parts: [{ text: JSON.stringify({ questions: reviewInput }) }],
+        responseSchema: GEMINI_VALIDATION_SCHEMA,
+      });
+    } catch {
+      // validation is best-effort; continue without it
+      review = { items: [] };
+    }
+    const reviewByIdx = new Map(review.items.map((r) => [r.idx, r]));
+    await setStage("validation", 75);
+
+    // ============ STAGE C — Clean + reconcile + sequence check ============
     const cleaned = listParse.data.questions
-      .map((q) => {
+      .map((q, idx) => {
         const rec = reconcileCorrectness(q);
+        const rv = reviewByIdx.get(idx);
+        // Rule: explanation prevails — if validator resolved a different letter, use it.
+        let finalOptions = rec.options;
+        let inconsistent = rec.inconsistent;
+        let validation_status: string = rv?.validation_status ?? "ok";
+        let validation_reason: string | null = rv?.validation_reason ?? null;
+        if (rv?.resolved_letter && q.options.some((o) => o.label === rv.resolved_letter)) {
+          const target = rv.resolved_letter;
+          const currentCorrect = finalOptions.find((o) => o.is_correct)?.label;
+          if (currentCorrect !== target) {
+            finalOptions = finalOptions.map((o) => ({ ...o, is_correct: o.label === target }));
+            inconsistent = true;
+            validation_status = "alerta";
+            validation_reason =
+              validation_reason ??
+              `Gabarito original (${currentCorrect ?? "?"}) divergente da explicação (${target}). Prevalece a explicação.`;
+          }
+        }
+        const conf = typeof rv?.confidence === "number" ? rv.confidence : null;
         return {
           question_number: q.question_number ?? null,
           statement: cleanText(q.statement),
           subject: q.subject?.trim() || null,
           difficulty: q.difficulty ?? null,
           incomplete: !!q.incomplete,
-          flagged_inconsistent: rec.inconsistent,
-          options: rec.options.map((o) => ({
+          flagged_inconsistent: inconsistent,
+          confidence: conf,
+          validation_status,
+          validation_reason,
+          explanation_raw: (q as unknown as { explanation?: string }).explanation ?? null,
+          question_type:
+            (q as unknown as { question_type?: string }).question_type ?? "multiple_choice",
+          affirmatives:
+            (q as unknown as { affirmatives?: unknown[] }).affirmatives ?? null,
+          options: finalOptions.map((o) => ({
             label: o.label,
             text: cleanOption(o.text),
             is_correct: o.is_correct,
@@ -380,76 +421,220 @@ export const extractQuestions = createServerFn({ method: "POST" })
       .filter((q) => q.statement.length >= 15 && q.options.length >= 2);
 
     if (cleaned.length === 0) {
-      return fail("Nenhuma questão objetiva foi detectada nas páginas enviadas.");
+      return fail("Nenhuma questão objetiva válida após validação.");
     }
 
-    // 4) Build warnings (missing numbers, incompletes).
+    // Sequence check — pause if missing numbers detected
     const warnings = buildWarnings(listParse.data.questions);
-
-    // 5) Bulk insert questions + options.
-    const questionRows = cleaned.map((q) => ({
-      user_id: userId,
-      upload_id: data.uploadId,
-      statement: q.statement,
-      subject: q.subject,
-      difficulty: q.difficulty,
-      question_number: q.question_number,
-      flagged_inconsistent: q.flagged_inconsistent,
-    }));
-
-    const { data: inserted, error: qErr } = await supabase
-      .from("questions")
-      .insert(questionRows)
-      .select("id");
-
-    if (qErr || !inserted) {
-      return fail(qErr?.message ?? "Erro ao salvar questões.");
-    }
-
-    const optionRows: Array<{
-      question_id: string;
-      label: string;
-      text: string;
-      is_correct: boolean;
-    }> = [];
-    inserted.forEach((row, i) => {
-      const q = cleaned[i];
-      for (const o of q.options) {
-        optionRows.push({
-          question_id: row.id,
-          label: o.label,
-          text: o.text,
-          is_correct: o.is_correct,
-        });
+    const numbers = cleaned
+      .map((q) => q.question_number)
+      .filter((n): n is number => typeof n === "number")
+      .sort((a, b) => a - b);
+    const missing: number[] = [];
+    if (numbers.length >= 2) {
+      const seen = new Set(numbers);
+      for (let i = numbers[0]; i <= numbers[numbers.length - 1]; i++) {
+        if (!seen.has(i)) missing.push(i);
       }
+    }
+
+    if (missing.length > 0) {
+      // Pause for user confirmation — persist the cleaned payload for later commit.
+      await supabase
+        .from("uploads")
+        .update({
+          pipeline_stage: "awaiting_confirmation",
+          pipeline_progress: 85,
+          missing_numbers: missing,
+          pending_confirmation: true,
+          pending_payload: { cleaned, warnings } as unknown as Record<string, unknown>,
+        })
+        .eq("id", data.uploadId);
+      return {
+        ok: true as const,
+        pending: true as const,
+        missing,
+        count: cleaned.length,
+      };
+    }
+
+    // No missing — persist immediately
+    return await persistCleaned({
+      supabase,
+      userId,
+      uploadId: data.uploadId,
+      cleaned,
+      warnings,
     });
-    if (optionRows.length > 0) {
-      const { error: oErr } = await supabase.from("question_options").insert(optionRows);
-      if (oErr) return fail(oErr.message);
-    }
+  });
 
-    const flaggedCount = cleaned.filter((q) => q.flagged_inconsistent).length;
-    if (flaggedCount > 0) {
-      warnings.push(
-        `${flaggedCount} questão(ões) com gabarito em revisão — verifique manualmente antes de praticar.`,
-      );
-    }
+// ============================================================
+// persistCleaned — write questions/options to DB, finalize upload
+// ============================================================
+async function persistCleaned(opts: {
+  supabase: any;
+  userId: string;
+  uploadId: string;
+  cleaned: Array<{
+    question_number: number | null;
+    statement: string;
+    subject: string | null;
+    difficulty: string | null;
+    flagged_inconsistent: boolean;
+    confidence: number | null;
+    validation_status: string;
+    validation_reason: string | null;
+    explanation_raw: string | null;
+    question_type: string;
+    affirmatives: unknown[] | null;
+    options: Array<{ label: string; text: string; is_correct: boolean }>;
+  }>;
+  warnings: string[];
+}) {
+  const { supabase, userId, uploadId, cleaned, warnings } = opts;
 
+  await supabase
+    .from("uploads")
+    .update({ pipeline_stage: "saving", pipeline_progress: 92 })
+    .eq("id", uploadId);
+
+  const questionRows = cleaned.map((q) => ({
+    user_id: userId,
+    upload_id: uploadId,
+    statement: q.statement,
+    subject: q.subject,
+    difficulty: q.difficulty,
+    question_number: q.question_number,
+    flagged_inconsistent: q.flagged_inconsistent,
+    confidence: q.confidence,
+    validation_status: q.validation_status,
+    validation_reason: q.validation_reason,
+    question_type: q.question_type,
+    affirmatives: q.affirmatives as unknown,
+    explanation_raw: q.explanation_raw,
+  }));
+  const { data: inserted, error: qErr } = await supabase
+    .from("questions")
+    .insert(questionRows)
+    .select("id");
+  if (qErr || !inserted) {
     await supabase
       .from("uploads")
-      .update({
-        status: "done",
-        questions_count: inserted.length,
-        warnings,
-      })
-      .eq("id", data.uploadId);
+      .update({ status: "failed", error: qErr?.message ?? "Erro ao salvar questões." })
+      .eq("id", uploadId);
+    throw new Error(qErr?.message ?? "Erro ao salvar questões.");
+  }
 
-    return {
-      ok: true as const,
-      count: inserted.length,
+  const optionRows: Array<{
+    question_id: string;
+    label: string;
+    text: string;
+    is_correct: boolean;
+  }> = [];
+  inserted.forEach((row: { id: string }, i: number) => {
+    const q = cleaned[i];
+    for (const o of q.options) {
+      optionRows.push({
+        question_id: row.id,
+        label: o.label,
+        text: o.text,
+        is_correct: o.is_correct,
+      });
+    }
+  });
+  if (optionRows.length > 0) {
+    const { error: oErr } = await supabase
+      .from("question_options")
+      .insert(optionRows);
+    if (oErr) {
+      await supabase
+        .from("uploads")
+        .update({ status: "failed", error: oErr.message })
+        .eq("id", uploadId);
+      throw new Error(oErr.message);
+    }
+  }
+
+  const flaggedCount = cleaned.filter((q) => q.flagged_inconsistent).length;
+  if (flaggedCount > 0) {
+    warnings.push(
+      `${flaggedCount} questão(ões) com gabarito em revisão — verifique manualmente antes de praticar.`,
+    );
+  }
+
+  await supabase
+    .from("uploads")
+    .update({
+      status: "done",
+      questions_count: inserted.length,
       warnings,
-      flaggedCount,
+      pipeline_stage: "done",
+      pipeline_progress: 100,
+      pending_confirmation: false,
+      pending_payload: null,
+    })
+    .eq("id", uploadId);
+
+  return {
+    ok: true as const,
+    pending: false as const,
+    count: inserted.length,
+    warnings,
+    flaggedCount,
+  };
+}
+
+// ============================================================
+// confirmExtraction — user decided to continue or redo after pause
+// ============================================================
+export const confirmExtraction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        uploadId: z.string().uuid(),
+        decision: z.enum(["continue", "redo"]),
+      })
+      .parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase
+      .from("uploads")
+      .select("id, user_id, pending_payload, pending_confirmation")
+      .eq("id", data.uploadId)
+      .single();
+    if (error || !row) throw new Error("Upload não encontrado.");
+    if (row.user_id !== userId) throw new Error("Sem permissão.");
+    if (!row.pending_confirmation || !row.pending_payload) {
+      throw new Error("Este upload não está aguardando confirmação.");
+    }
+
+    if (data.decision === "redo") {
+      await supabase
+        .from("uploads")
+        .update({
+          status: "failed",
+          error: "Cancelado pelo usuário para reenvio.",
+          pipeline_stage: "cancelled",
+          pending_confirmation: false,
+          pending_payload: null,
+        })
+        .eq("id", data.uploadId);
+      return { ok: true as const, cancelled: true as const };
+    }
+
+    const payload = row.pending_payload as {
+      cleaned: Parameters<typeof persistCleaned>[0]["cleaned"];
+      warnings: string[];
     };
+    return persistCleaned({
+      supabase,
+      userId,
+      uploadId: data.uploadId,
+      cleaned: payload.cleaned,
+      warnings: payload.warnings ?? [],
+    });
   });
 
 // ============================================================
