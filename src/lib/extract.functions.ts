@@ -521,7 +521,7 @@ export const extractQuestions = createServerFn({ method: "POST" })
           pipeline_progress: 85,
           missing_numbers: missing,
           pending_confirmation: true,
-          pending_payload: { cleaned, warnings } as unknown as Record<string, unknown>,
+          pending_payload: JSON.parse(JSON.stringify({ cleaned, warnings })),
         })
         .eq("id", data.uploadId);
       return {
