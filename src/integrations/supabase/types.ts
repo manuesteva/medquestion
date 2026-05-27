@@ -246,40 +246,58 @@ export type Database = {
       }
       questions: {
         Row: {
+          affirmatives: Json | null
+          confidence: number | null
           created_at: string
           difficulty: string | null
+          explanation_raw: string | null
           flagged_inconsistent: boolean
           id: string
           question_number: number | null
+          question_type: string | null
           source: string | null
           statement: string
           subject: string | null
           upload_id: string | null
           user_id: string
+          validation_reason: string | null
+          validation_status: string | null
         }
         Insert: {
+          affirmatives?: Json | null
+          confidence?: number | null
           created_at?: string
           difficulty?: string | null
+          explanation_raw?: string | null
           flagged_inconsistent?: boolean
           id?: string
           question_number?: number | null
+          question_type?: string | null
           source?: string | null
           statement: string
           subject?: string | null
           upload_id?: string | null
           user_id: string
+          validation_reason?: string | null
+          validation_status?: string | null
         }
         Update: {
+          affirmatives?: Json | null
+          confidence?: number | null
           created_at?: string
           difficulty?: string | null
+          explanation_raw?: string | null
           flagged_inconsistent?: boolean
           id?: string
           question_number?: number | null
+          question_type?: string | null
           source?: string | null
           statement?: string
           subject?: string | null
           upload_id?: string | null
           user_id?: string
+          validation_reason?: string | null
+          validation_status?: string | null
         }
         Relationships: [
           {
@@ -370,6 +388,11 @@ export type Database = {
           folder_id: string | null
           id: string
           mime_type: string | null
+          missing_numbers: number[]
+          pending_confirmation: boolean
+          pending_payload: Json | null
+          pipeline_progress: number
+          pipeline_stage: string | null
           questions_count: number
           status: string
           user_id: string
@@ -384,6 +407,11 @@ export type Database = {
           folder_id?: string | null
           id?: string
           mime_type?: string | null
+          missing_numbers?: number[]
+          pending_confirmation?: boolean
+          pending_payload?: Json | null
+          pipeline_progress?: number
+          pipeline_stage?: string | null
           questions_count?: number
           status?: string
           user_id: string
@@ -398,6 +426,11 @@ export type Database = {
           folder_id?: string | null
           id?: string
           mime_type?: string | null
+          missing_numbers?: number[]
+          pending_confirmation?: boolean
+          pending_payload?: Json | null
+          pipeline_progress?: number
+          pipeline_stage?: string | null
           questions_count?: number
           status?: string
           user_id?: string
